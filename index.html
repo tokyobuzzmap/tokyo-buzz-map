@@ -2,6 +2,8 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src https://*.basemaps.cartocdn.com https://upload.wikimedia.org https://cdnjs.cloudflare.com data:; connect-src https://ja.wikipedia.org; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TOKYO BUZZ MAP — 今、東京で熱い場所</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
@@ -453,9 +455,9 @@ function sparkline(s, w = 84, h = 26) {
 function snsLinks(s) {
   const t = encodeURIComponent(s.tag);
   return `
-    <a class="badge b-insta" target="_blank" rel="noopener" href="https://www.instagram.com/explore/tags/${t}/">Instagram #</a>
-    <a class="badge b-tiktok" target="_blank" rel="noopener" href="https://www.tiktok.com/tag/${t}">TikTok #</a>
-    <a class="badge b-x" target="_blank" rel="noopener" href="https://x.com/search?q=%23${t}">X 検索</a>`;
+    <a class="badge b-insta" target="_blank" rel="noopener noreferrer" href="https://www.instagram.com/explore/tags/${t}/">Instagram #</a>
+    <a class="badge b-tiktok" target="_blank" rel="noopener noreferrer" href="https://www.tiktok.com/tag/${t}">TikTok #</a>
+    <a class="badge b-x" target="_blank" rel="noopener noreferrer" href="https://x.com/search?q=%23${t}">X 検索</a>`;
 }
 
 function stageBadge(s) {
@@ -463,19 +465,29 @@ function stageBadge(s) {
   return `<span class="stage-badge sg-${st.cls}">${st.label}</span>`;
 }
 
+const escHtml = v => String(v).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
 function photoHtml(s, forPopup = false) {
   const url = imgCache[s.name];
   if (url && url !== "none") {
-    return forPopup
-      ? `<img class="pop-img" src="${url}" alt="${s.name}" onerror="imgFail('${s.name.replace(/'/g, "\\'")}')">`
-      : `<img class="photo" src="${url}" alt="${s.name}" loading="lazy" onerror="imgFail('${s.name.replace(/'/g, "\\'")}')">`;
+    const cls = forPopup ? "pop-img" : "photo";
+    const lazy = forPopup ? "" : ' loading="lazy"';
+    return `<img class="${cls}" src="${escHtml(url)}" alt="${escHtml(s.name)}" data-spot="${escHtml(s.name)}"${lazy}>`;
   }
   return forPopup
     ? `<div class="pop-ph">NO PHOTO</div>`
     : `<div class="photo-ph"><small>NO PHOTO</small></div>`;
 }
 
-function imgFail(name) { imgCache[name] = "none"; render(); }
+// 画像読み込み失敗はイベント委任で拾い、プレースホルダーに差し替える
+document.addEventListener("error", e => {
+  const img = e.target;
+  if (img && img.tagName === "IMG" && img.dataset.spot && imgCache[img.dataset.spot] !== "none") {
+    imgCache[img.dataset.spot] = "none";
+    render();
+  }
+}, true);
 
 function makeIcon(spot) {
   const sc = score(spot);
@@ -500,7 +512,7 @@ function popupHtml(s) {
       <div class="forecast">${stageBadge(s)}${sparkline(s, 70, 24)}<span class="score-num" style="font-size:18px;">${score(s)}</span></div>
       <div class="why">${s.why}</div>
       <div class="links">${snsLinks(s)}${s.isNew ? '<span class="badge b-new">2026 NEW</span>' : ""}</div>
-      <a class="gmap" href="${gmap}" target="_blank" rel="noopener">Google Mapで開く →</a>
+      <a class="gmap" href="${gmap}" target="_blank" rel="noopener noreferrer">Google Mapで開く →</a>
     </div>
   </div>`;
 }
@@ -666,7 +678,10 @@ async function loadImages() {
     (q.redirects || []).forEach(r => resolve[r.from] = r.to);
     const finalTitle = t => { let x = t, i = 0; while (resolve[x] && i++ < 4) x = resolve[x]; return x; };
     const thumbs = {};
-    (q.pages || []).forEach(p => { if (p.thumbnail && p.thumbnail.source) thumbs[p.title] = p.thumbnail.source; });
+    const OK_IMG = /^https:\/\/upload\.wikimedia\.org\//; // 画像URLはWikimedia公式ドメインのみ許可
+    (q.pages || []).forEach(p => {
+      if (p.thumbnail && p.thumbnail.source && OK_IMG.test(p.thumbnail.source)) thumbs[p.title] = p.thumbnail.source;
+    });
     SPOTS.forEach(s => {
       imgCache[s.name] = "none";
       for (const t of (s.wiki || [])) {
