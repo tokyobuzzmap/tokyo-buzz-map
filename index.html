@@ -2,12 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com; img-src https://*.basemaps.cartocdn.com https://upload.wikimedia.org https://cdnjs.cloudflare.com data:; connect-src https://ja.wikipedia.org https://cloudflareinsights.com; base-uri 'none'; form-action 'none'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' https://cdnjs.cloudflare.com https://static.cloudflareinsights.com; style-src 'unsafe-inline' https://cdnjs.cloudflare.com https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src https://*.basemaps.cartocdn.com https://upload.wikimedia.org https://cdnjs.cloudflare.com data:; connect-src https://ja.wikipedia.org https://cloudflareinsights.com; frame-src https://www.instagram.com; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="strict-origin-when-cross-origin">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TOKYO BUZZ MAP — 今、東京で熱い場所</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"
       integrity="sha384-c6Rcwz4e4CITMbu/NBmnNS8yN2sC3cUElMEMfP3vqqKFp7GOYaaBBCqmaWBjmkjb" crossorigin="anonymous">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;1,700&family=Zen+Kaku+Gothic+New:wght@500&display=swap">
 <style>
   :root {
     --ink: #111111;
@@ -16,8 +18,13 @@
     --rise: #d97706;
     --cool: #8b93a5;
     --stable: #2e7d5b;
-    --line: #e3ded4;
+    --line: #e6dfd2;
     --sub: #767066;
+    --warm: #f7ecdd;    /* ラテベージュ: 温度のあるサブ背景 */
+    --blush: #fbeee7;   /* 朱の淡ティント: 選択・保存状態 */
+    --radius: 12px;
+    --serif: "Playfair Display", Georgia, "Times New Roman", serif;
+    --jp-head: "Zen Kaku Gothic New", "Hiragino Kaku Gothic ProN", "Hiragino Sans", sans-serif;
   }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
@@ -38,16 +45,39 @@
   }
   .head-row { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; }
   header h1 {
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 26px;
-    letter-spacing: 4px;
+    font-family: var(--serif);
+    font-size: 28px;
+    letter-spacing: .14em;
     font-weight: 700;
   }
-  header h1 span { color: var(--accent); }
+  header h1 span { color: var(--accent); font-style: italic; letter-spacing: .04em; padding-right: .06em; }
   header .tagline { font-size: 11px; color: #b8b2a6; letter-spacing: 1px; }
-  header .updated { margin-left: auto; font-size: 11px; color: #b8b2a6; }
+  .hdr-controls { margin-left: auto; display: flex; align-items: center; gap: 10px; }
+  #city-select {
+    background: transparent;
+    color: var(--paper);
+    border: 1px solid #4d4c48;
+    border-radius: 8px;
+    padding: 6px 8px;
+    font-size: 12px;
+    font-family: var(--jp-head);
+    cursor: pointer;
+  }
+  #city-select option { color: #111; }
+  #lang-btn {
+    background: transparent;
+    color: var(--paper);
+    border: 1px solid #4d4c48;
+    border-radius: 8px;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-family: var(--jp-head);
+    letter-spacing: 1px;
+    cursor: pointer;
+  }
+  #lang-btn:hover, #city-select:hover { border-color: var(--paper); }
+  header .updated { font-size: 11px; color: #b8b2a6; }
   header .updated b { color: var(--paper); }
-  /* ---------- Tabs ---------- */
   .tabs { display: flex; gap: 4px; margin-top: 10px; }
   .tab {
     background: transparent;
@@ -57,6 +87,7 @@
     padding: 8px 16px 10px;
     font-size: 13px;
     font-weight: 700;
+    font-family: var(--jp-head);
     cursor: pointer;
     transition: all .15s;
   }
@@ -80,8 +111,9 @@
     background: transparent;
     color: var(--ink);
     border-radius: 999px;
-    padding: 5px 13px;
+    padding: 7px 14px;
     font-size: 12px;
+    font-family: var(--jp-head);
     cursor: pointer;
     white-space: nowrap;
     transition: all .15s;
@@ -91,72 +123,94 @@
   .chip.st-rising.active { background: var(--rise); border-color: var(--rise); color: #fff; }
   .chip.st-cooling.active { background: var(--cool); border-color: var(--cool); color: #fff; }
   .chip.st-stable.active { background: var(--stable); border-color: var(--stable); color: #fff; }
+  .chip.saved-chip { border-color: var(--accent); color: var(--accent); }
+  .chip.saved-chip.active { background: var(--accent); color: #fff; }
   /* ---------- Layout ---------- */
   .main { flex: 1; display: flex; min-height: 0; }
   #map { flex: 1; }
   aside {
-    width: 375px;
+    width: 400px;
     border-left: 1px solid var(--line);
     background: var(--paper);
     overflow-y: auto;
     flex-shrink: 0;
   }
   aside .count { padding: 20px 16px 10px; font-size: 11px; letter-spacing: 2px; color: var(--sub); border-bottom: 1px solid var(--line); }
-  /* ---------- Card ---------- */
+  /* ---------- Card (A案: 写真主役の縦型) ---------- */
+  #cards { padding: 12px; display: flex; flex-direction: column; gap: 12px; }
   .card {
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--line);
-    cursor: pointer;
-    transition: background .15s;
-  }
-  .card:hover, .card.selected { background: #f0ece3; }
-  .card .body { display: flex; gap: 12px; }
-  .photo {
-    width: 92px; height: 92px;
-    object-fit: cover;
-    flex-shrink: 0;
-    background: #e8e3d8;
-  }
-  .photo-ph {
-    width: 92px; height: 92px;
-    flex-shrink: 0;
-    display: flex;
-    align-items: center; justify-content: center;
-    background: #edeae2;
+    background: #fff;
     border: 1px solid var(--line);
-    color: var(--sub);
-    text-align: center;
+    border-radius: var(--radius);
+    overflow: hidden;
+    cursor: pointer;
+    transition: box-shadow .2s, transform .2s;
   }
-  .photo-ph small { font-size: 9px; letter-spacing: 1px; }
-  .card .info { flex: 1; min-width: 0; }
-  .card h3 { font-size: 14px; line-height: 1.35; }
-  .card .meta { margin-top: 4px; font-size: 11px; color: var(--sub); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
-  .card .why { margin-top: 7px; font-size: 12px; line-height: 1.55; color: #3d3a34; }
+  .card { box-shadow: 0 2px 12px rgba(17,17,17,.06); }
+  .card:hover { outline: 1px solid var(--accent); transform: translateY(-1px); }
+  .card.selected { outline: 1px solid var(--accent); background: var(--blush); }
+  .thumb { position: relative; background: var(--warm); }
+  .thumb .photo { width: 100%; height: 190px; object-fit: cover; display: block; }
+  .thumb .photo-ph {
+    width: 100%; height: 190px;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--warm);
+    color: var(--sub);
+    font-size: 10px; letter-spacing: 2px;
+  }
+  .thumb .stage-badge {
+    position: absolute; top: 10px; left: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.15);
+  }
+  .save-btn {
+    position: absolute; top: 10px; right: 10px;
+    border: none;
+    background: rgba(250,248,244,.94);
+    color: var(--ink);
+    font-size: 11px; font-weight: 700;
+    padding: 5px 11px;
+    border-radius: 999px;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  }
+  .save-btn.on { background: var(--accent); color: #fff; }
+  .card .info { padding: 12px 14px 14px; }
+  .card h3 { font-size: 15px; line-height: 1.35; font-family: var(--jp-head); }
+  .card .meta { margin-top: 5px; font-size: 11px; color: var(--sub); display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .card .why { margin-top: 8px; font-size: 12px; line-height: 1.6; color: #3d3a34; }
+  .crowd { margin-top: 6px; font-size: 11px; color: var(--sub); }
+  .crowd b { color: var(--ink); }
   /* ---------- Forecast strip ---------- */
   .forecast {
-    margin-top: 7px;
-    display: flex; align-items: center; gap: 8px;
-    background: #f2eee5;
-    padding: 5px 8px;
+    margin-top: 8px;
+    display: flex; align-items: center; gap: 10px;
+    background: var(--warm);
+    border-radius: calc(var(--radius) - 4px);
+    padding: 7px 10px;
   }
+  /* 警報ラベル型バッジ(案2から移植) */
+  .stage-badge {
+    font-size: 11px; font-weight: 700;
+    font-family: var(--jp-head);
+    letter-spacing: 1px;
+    white-space: nowrap;
+    display: inline-block;
+    padding: 3px 8px 3px 7px;
+    border-radius: 4px;
+    border-left: 3px solid;
+  }
+  .sg-peak { color: #c53008; border-color: var(--accent); background: #fdeae4; }
+  .sg-rising { color: #b45f04; border-color: var(--rise); background: #fdf3e3; }
+  .sg-cooling { color: #5c6474; border-color: var(--cool); background: #eef0f4; }
+  .sg-stable { color: #1f5c43; border-color: var(--stable); background: #e7f2ec; }
+  .spark { flex-shrink: 0; }
   .score-num {
-    font-family: Georgia, serif;
-    font-size: 26px;
+    font-family: var(--serif);
+    font-size: 34px;
     font-weight: 700;
     line-height: 1;
     font-feature-settings: "tnum";
   }
-  .stage-badge {
-    font-size: 11px; font-weight: 700;
-    letter-spacing: 1px;
-    white-space: nowrap;
-  }
-  .stage-badge::before { content: "●"; font-size: 8px; margin-right: 4px; vertical-align: 1px; }
-  .sg-peak { color: var(--accent); }
-  .sg-rising { color: var(--rise); }
-  .sg-cooling { color: var(--cool); }
-  .sg-stable { color: var(--stable); }
-  .spark { flex-shrink: 0; }
   .delta { font-size: 11px; font-weight: 700; white-space: nowrap; }
   .delta.up { color: var(--accent); }
   .delta.down { color: var(--cool); }
@@ -165,26 +219,41 @@
   .badge {
     display: inline-block;
     font-size: 10px;
-    padding: 2px 8px;
+    padding: 3px 9px;
     border: 1px solid var(--ink);
+    border-radius: 999px;
     background: transparent;
     color: var(--ink) !important;
-    font-family: Georgia, serif;
     letter-spacing: 1px;
     text-decoration: none;
   }
   a.badge:hover { background: var(--ink); color: var(--paper) !important; }
   .b-new { background: var(--accent); border-color: var(--accent); color: #fff !important; }
-  .cat-tag { border: 1px solid var(--line); padding: 1px 6px; font-size: 10px; color: var(--sub); }
+  .sns-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px; height: 32px;
+    border: 1px solid var(--ink);
+    border-radius: 999px;
+    color: var(--ink) !important;
+    background: transparent;
+    text-decoration: none;
+    transition: all .15s;
+  }
+  .sns-link svg { width: 15px; height: 15px; display: block; }
+  .sns-link:hover { background: var(--ink); color: var(--paper) !important; }
+  .cat-tag { border: 1px solid var(--line); border-radius: 999px; padding: 2px 8px; font-size: 10px; color: var(--sub); }
   /* ---------- Popup ---------- */
-  .leaflet-popup-content-wrapper { border-radius: 0; background: var(--paper); overflow: hidden; }
-  .leaflet-popup-content { margin: 0; font-family: inherit; width: 260px !important; }
-  .pop .pop-img { width: 100%; height: 130px; object-fit: cover; display: block; background: #e8e3d8; }
-  .pop .pop-ph { width: 100%; height: 70px; display: flex; align-items: center; justify-content: center; font-size: 10px; letter-spacing: 2px; color: var(--sub); background: #edeae2; border-bottom: 1px solid var(--line); }
+  .leaflet-popup-content-wrapper { border-radius: var(--radius); background: var(--paper); overflow: hidden; }
+  .leaflet-popup-content { margin: 0; font-family: inherit; width: 270px !important; }
+  .pop .pop-img { width: 100%; height: 140px; object-fit: cover; display: block; background: var(--warm); }
+  .pop .pop-ph { width: 100%; height: 80px; display: flex; align-items: center; justify-content: center; font-size: 10px; letter-spacing: 2px; color: var(--sub); background: var(--warm); border-bottom: 1px solid var(--line); }
+  .pop .ig-embed { width: 100%; height: 330px; border: none; display: block; background: #fff; }
   .pop .inner { padding: 12px 14px 14px; }
   .pop h3 { font-size: 15px; margin-bottom: 3px; }
   .pop .area { font-size: 11px; color: var(--sub); margin-bottom: 6px; }
-  .pop .why { font-size: 12px; line-height: 1.55; margin: 6px 0; }
+  .pop .why { font-size: 12px; line-height: 1.6; margin: 6px 0; }
   .pop .links { display: flex; gap: 5px; margin-top: 8px; flex-wrap: wrap; }
   .pop .gmap {
     display: inline-block; margin-top: 8px;
@@ -201,13 +270,14 @@
   /* ---------- Ranking view ---------- */
   #rank-view { flex: 1; min-height: 0; overflow-y: auto; display: none; }
   .rank-wrap { max-width: 760px; margin: 0 auto; padding: 20px 16px 40px; }
-  .rank-head { font-family: Georgia, serif; font-size: 20px; font-weight: 700; letter-spacing: 1px; }
+  .rank-head { font-family: var(--serif); font-size: 20px; font-weight: 700; letter-spacing: 1px; }
   .rank-head small { display: block; font-family: inherit; font-size: 11px; color: var(--sub); font-weight: 400; margin-top: 4px; letter-spacing: .5px; }
   .rank-section { margin-top: 18px; font-size: 12px; font-weight: 700; color: var(--sub); letter-spacing: 1px; }
   .rank-row {
     display: flex; align-items: center; gap: 12px;
     background: #fff;
     border: 1px solid var(--line);
+    border-radius: var(--radius);
     padding: 10px 14px;
     margin-top: 8px;
     cursor: pointer;
@@ -215,17 +285,25 @@
   }
   .rank-row:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
   .rank-no {
-    font-family: Georgia, serif;
+    font-family: var(--serif);
     font-size: 20px; font-weight: 700;
     width: 34px; text-align: center;
     color: var(--sub);
     flex-shrink: 0;
   }
   .rank-no.top { color: var(--accent); font-size: 24px; }
-  .rank-row .photo, .rank-row .photo-ph { width: 56px; height: 56px; font-size: 18px; }
-  .rank-row .photo-ph small { display: none; }
+  .rank-row .photo, .rank-row .photo-ph {
+    width: 56px; height: 56px;
+    border-radius: calc(var(--radius) - 4px);
+    object-fit: cover;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    background: var(--warm);
+    color: var(--sub);
+    font-size: 8px; letter-spacing: 1px;
+  }
   .rank-info { flex: 1; min-width: 0; }
-  .rank-info h3 { font-size: 13.5px; line-height: 1.3; }
+  .rank-info h3 { font-size: 13.5px; line-height: 1.3; font-family: var(--jp-head); }
   .rank-info .meta { font-size: 11px; color: var(--sub); margin-top: 3px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
   .rank-delta { text-align: right; flex-shrink: 0; }
   .rank-delta .d { font-size: 17px; font-weight: 800; }
@@ -240,11 +318,33 @@
     color: var(--sub);
     flex-shrink: 0;
   }
+  /* ---------- Mobile: 地図フル画面+カルーセル ---------- */
   @media (max-width: 720px) {
-    .main { flex-direction: column; }
-    #map { min-height: 42vh; }
-    aside { width: 100%; flex: 1; border-left: none; border-top: 2px solid var(--ink); }
-    header .updated { display: none; }
+    header { padding: 12px 16px 0; }
+    header h1 { font-size: 18px; letter-spacing: 2px; }
+    header .tagline, header .updated { display: none; }
+    .main { position: relative; }
+    #map { position: absolute; inset: 0; }
+    aside {
+      position: absolute; bottom: 0; left: 0;
+      width: 100%;
+      background: transparent;
+      border: none;
+      overflow-x: auto; overflow-y: hidden;
+      z-index: 500;
+    }
+    aside .count { display: none; }
+    #cards {
+      display: flex; flex-direction: row;
+      gap: 10px;
+      padding: 0 12px 14px;
+    }
+    .card {
+      min-width: 78vw;
+      box-shadow: 0 4px 16px rgba(0,0,0,.15);
+    }
+    .thumb .photo, .thumb .photo-ph { height: 130px; }
+    .card .why { display: none; } /* モバイルは写真+予報に集中 */
   }
 </style>
 </head>
@@ -253,8 +353,12 @@
 <header>
   <div class="head-row">
     <h1>TOKYO <span>BUZZ</span> MAP</h1>
-    <div class="tagline">SNSのバズを、天気予報のように。</div>
-    <div class="updated">最終更新: <b id="updated-date"></b> ｜ 週次更新</div>
+    <div class="tagline" id="tagline"></div>
+    <div class="hdr-controls">
+      <select id="city-select" aria-label="都市を選択"></select>
+      <button id="lang-btn" type="button" aria-label="Switch language"></button>
+      <div class="updated" id="updated-box"></div>
+    </div>
   </div>
   <div class="tabs">
     <button class="tab active" data-view="map">バズマップ</button>
@@ -262,8 +366,8 @@
   </div>
 </header>
 
-<div class="filters" id="stage-filters"><span class="label">バズ予報</span></div>
-<div class="filters" id="cat-filters"><span class="label">カテゴリ</span></div>
+<div class="filters" id="stage-filters"><span class="label" id="label-stage"></span></div>
+<div class="filters" id="cat-filters"><span class="label" id="label-cat"></span></div>
 
 <div class="main">
   <div id="map"></div>
@@ -275,16 +379,14 @@
 
 <div id="rank-view">
   <div class="rank-wrap">
-    <div class="rank-head">WEEKLY BUZZ RANKING<small>先週比のバズ指数「上がり幅」ランキング — 今まさに勢いのある場所</small></div>
+    <div class="rank-head"><span id="rank-title"></span><small id="rank-sub"></small></div>
     <div id="rank-up"></div>
-    <div class="rank-section">クールダウン中 — 行列が消えた狙い目</div>
+    <div class="rank-section" id="rank-cool-label"></div>
     <div id="rank-down"></div>
   </div>
 </div>
 
-<footer>
-  β版プロトタイプ — バズ指数(0〜100)は編集部がSNSトレンド・メディア報道から算出する週次スコアです。写真はWikipediaより自動取得(店舗単体で取得できない場合はエリア写真または差し替え待ち)。
-</footer>
+<footer id="footer-note"></footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"
         integrity="sha384-NElt3Op+9NBMCYaef5HxeJmU4Xeard/Lku8ek6hoPTvYkQPh3zLIrJP7KiRocsxO" crossorigin="anonymous"></script>
@@ -293,108 +395,208 @@
 // バズ予報ステージ:
 //   rising 今からバズる / peak 絶賛バズり中 / cooling 終わりかけ / stable 定番化
 // history: 直近5週のバズ指数 (最後が今週)
-// tag: SNSリンク用ハッシュタグ
-// wiki: 写真取得のWikipedia記事候補(先頭から順に試す。nullは差し替え待ち)
+// tag: SNSリンク用ハッシュタグ / wiki: 写真取得のWikipedia記事候補
+// ig: 店舗公式Instagram投稿URL(承認取得後に週次運用で追記。あれば埋め込み表示)
 // ============================================================
-const UPDATED = "2026.07.03";
+const UPDATED = "2026.07.04";
 const STAGES = {
   rising:  { label: "今からバズる", cls: "rising",  pin: "#d97706" },
   peak:    { label: "絶賛バズり中", cls: "peak",    pin: "#e8380d" },
   cooling: { label: "終わりかけ",   cls: "cooling", pin: "#8b93a5" },
   stable:  { label: "定番化",       cls: "stable",  pin: "#2e7d5b" }
 };
+// 混雑目安はバズ指数ステージからの編集部推定(I18N.crowdsで日英管理)
 
 const SPOTS = [
   { name: "BRUSSELS FRIES 新大久保", area: "新大久保", cat: "グルメ",
     stage: "peak", history: [22,38,61,85,93], isNew: true,
-    lat: 35.7013, lng: 139.7005, tag: "ブリュッセルフライ", wiki: ["新大久保駅"],
+    lat: 35.7013, lng: 139.7005, tag: "ブリュッセルフライ", wiki: ["新大久保駅"], ig: null,
     why: "牛脂ブレンド油で二度揚げする本場ブリュッセル式ポテト。ソースを「混ぜる動画」がTikTokでバズり、新大久保の新定番に。" },
   { name: "ポケパーク カントー(よみうりランド)", area: "稲城・よみうりランド", cat: "エンタメ",
     stage: "peak", history: [60,72,85,92,97], isNew: true,
-    lat: 35.6250, lng: 139.5170, tag: "ポケパーク", wiki: ["よみうりランド"],
+    lat: 35.6250, lng: 139.5170, tag: "ポケパーク", wiki: ["よみうりランド"], ig: null,
     why: "ポケモン初の屋外常設テーマパーク、2026年2月開業。「ポケモンフォレスト」体験動画が世界中でバズ。抽選チケット制。" },
   { name: "KAWAII MONSTER LAND", area: "原宿・竹下通り", cat: "エンタメ",
     stage: "peak", history: [40,58,72,88,95], isNew: true,
-    lat: 35.6716, lng: 139.7031, tag: "kawaiimonsterland", wiki: ["竹下通り"],
+    lat: 35.6716, lng: 139.7031, tag: "kawaiimonsterland", wiki: ["竹下通り"], ig: null,
     why: "増田セバスチャン監修、2026年2月オープン。地下に広がる極彩色ワンダーランドが海外勢にも大バズり。時間指定チケット推奨。" },
   { name: "TOKYO DREAM PARK", area: "有明", cat: "エンタメ",
     stage: "peak", history: [20,50,75,90,88], isNew: true,
-    lat: 35.6340, lng: 139.7930, tag: "tokyodreampark", wiki: ["有明 (江東区)"],
+    lat: 35.6340, lng: 139.7930, tag: "tokyodreampark", wiki: ["有明 (江東区)"], ig: null,
     why: "テレ朝発の複合エンタメ施設が2026年3月オープン。没入型デジタルアートと劇場を備え、イベント日は行列必至。" },
   { name: "TAKANAWA GATEWAY CITY", area: "高輪", cat: "新施設",
     stage: "peak", history: [30,65,80,78,84], isNew: true,
-    lat: 35.6355, lng: 139.7405, tag: "高輪ゲートウェイシティ", wiki: ["高輪ゲートウェイ駅"],
+    lat: 35.6355, lng: 139.7405, tag: "高輪ゲートウェイシティ", wiki: ["高輪ゲートウェイ駅"], ig: null,
     why: "2026年3月グランドオープン。南北1.3kmの新しい街。最先端テックと伝統文化が融合した空間の夜景投稿が急増中。" },
   { name: "馬場FLAT 高田馬場", area: "高田馬場", cat: "カフェ・スイーツ",
     stage: "rising", history: [12,18,27,39,55], isNew: false,
-    lat: 35.7126, lng: 139.7038, tag: "馬場flat", wiki: ["高田馬場"],
+    lat: 35.7126, lng: 139.7038, tag: "馬場flat", wiki: ["高田馬場"], ig: null,
     why: "「出来立ての香りと音」がトレンド指標になった2026年、焼きたて提供スタイルで投稿が加速中。来週さらに伸びる予報。" },
   { name: "渋谷サクラステージ", area: "渋谷", cat: "新施設",
     stage: "rising", history: [15,20,28,35,44], isNew: false,
-    lat: 35.6570, lng: 139.7016, tag: "渋谷サクラステージ", wiki: ["渋谷サクラステージ", "渋谷駅"],
+    lat: 35.6570, lng: 139.7016, tag: "渋谷サクラステージ", wiki: ["渋谷サクラステージ", "渋谷駅"], ig: null,
     why: "桜丘の新街区に新店オープンが続き、グルメ系アカウントの開拓エリアとして投稿が増加トレンド。今から行けば先取り。" },
+  { name: "Blau Espresso(綾瀬)", area: "綾瀬", cat: "カフェ・スイーツ",
+    stage: "rising", history: [8,14,22,33,47], isNew: false,
+    lat: 35.7620, lng: 139.8247, tag: "blauespresso", wiki: ["綾瀬駅 (東京都)"], ig: null,
+    why: "高架下×全面ガラスの開放的な空間。清澄白河の人気店と同じ豆を使う本格派として、TikTokで投稿が増加中。綾瀬という意外性も追い風。" },
+  { name: "Aux Merveilleux de Fred(神楽坂)", area: "神楽坂", cat: "カフェ・スイーツ",
+    stage: "rising", history: [10,15,24,36,50], isNew: false,
+    lat: 35.7016, lng: 139.7405, tag: "メルベイユ", wiki: ["神楽坂"], ig: null,
+    why: "ベルギー伝統菓子「メルベイユ」の日本唯一の店舗。パリ発の人気店の上陸として感度の高い層から投稿が急増。行列化する前の今が狙い目。" },
   { name: "ドバイチョコ専門店エリア(新大久保)", area: "新大久保", cat: "カフェ・スイーツ",
     stage: "cooling", history: [95,88,70,52,40], isNew: false,
-    lat: 35.7008, lng: 139.7000, tag: "ドバイチョコ", wiki: null,
+    lat: 35.7008, lng: 139.7000, tag: "ドバイチョコ", wiki: null, ig: null,
     why: "世界的バズだったピスタチオ×カダイフの断面動画も、指数はピークの半分以下に。行くなら行列が消えた今が快適。" },
   { name: "2D Cafe 新大久保", area: "新大久保", cat: "カフェ・スイーツ",
     stage: "cooling", history: [70,62,50,38,30], isNew: false,
-    lat: 35.7000, lng: 139.7017, tag: "2dcafe", wiki: null,
+    lat: 35.7000, lng: 139.7017, tag: "2dcafe", wiki: null, ig: null,
     why: "「異世界カフェ」ブームの火付け役。バズはひと段落したが、撮影待ちが減った分ゆっくり撮れる狙い目期。" },
   { name: "三省堂書店 神保町本店(第2章)", area: "神保町", cat: "ショップ",
     stage: "cooling", history: [75,68,55,44,36], isNew: true,
-    lat: 35.6959, lng: 139.7576, tag: "三省堂書店", wiki: ["三省堂書店"],
+    lat: 35.6959, lng: 139.7576, tag: "三省堂書店", wiki: ["三省堂書店"], ig: null,
     why: "2026年3月の再開直後はXで大バズ。話題はひと巡りしたが、没入型の棚づくりは今が落ち着いて楽しめる。" },
   { name: "東急プラザ原宿「ハラカド」", area: "原宿・神宮前", cat: "新施設",
     stage: "stable", history: [55,52,54,50,53], isNew: false,
-    lat: 35.6717, lng: 139.7056, tag: "ハラカド", wiki: ["東急プラザ原宿「ハラカド」", "神宮前 (渋谷区)", "明治神宮前駅"],
+    lat: 35.6717, lng: 139.7056, tag: "ハラカド", wiki: ["東急プラザ原宿「ハラカド」", "神宮前 (渋谷区)", "明治神宮前駅"], ig: null,
     why: "約75店舗の原宿ランドマーク。屋上テラス×地下銭湯「小杉湯原宿」の投稿が定番化し、安定してバズが続く。" },
   { name: "Flapjack's Breakfast & Lunch", area: "東日本橋", cat: "グルメ",
     stage: "stable", history: [45,48,44,47,46], isNew: false,
-    lat: 35.6929, lng: 139.7846, tag: "flapjacks", wiki: null,
+    lat: 35.6929, lng: 139.7846, tag: "flapjacks", wiki: null, ig: null,
     why: "カリフォルニアのロードサイドダイナーを再現。特大パンケーキで「朝食の名店」として安定した人気が続く。" },
   { name: "豊洲 千客万来", area: "豊洲", cat: "グルメ",
     stage: "stable", history: [58,55,60,57,59], isNew: false,
-    lat: 35.6423, lng: 139.7889, tag: "豊洲千客万来", wiki: ["豊洲 千客万来", "豊洲千客万来", "豊洲市場"],
+    lat: 35.6423, lng: 139.7889, tag: "豊洲千客万来", wiki: ["豊洲 千客万来", "豊洲千客万来", "豊洲市場"], ig: null,
     why: "江戸の街並み×海鮮グルメ。インバウンド需要で「海鮮爆盛り丼」投稿が定番バズネタとして安定継続。" },
   { name: "ワーナー スタジオツアー東京(ハリー・ポッター)", area: "としまえん跡", cat: "エンタメ",
     stage: "stable", history: [62,60,64,61,63], isNew: false,
     lat: 35.7420, lng: 139.6489, tag: "スタジオツアー東京",
-    wiki: ["ワーナー ブラザース スタジオツアー東京 - メイキング・オブ・ハリー・ポッター", "としまえん"],
+    wiki: ["ワーナー ブラザース スタジオツアー東京 - メイキング・オブ・ハリー・ポッター", "としまえん"], ig: null,
     why: "新シーズン演出で再燃。ローブ姿での体験投稿がコンスタントにバズる殿堂入りスポット。" },
   { name: "チームラボボーダレス(麻布台ヒルズ)", area: "麻布台", cat: "フォトスポット",
     stage: "stable", history: [66,64,65,63,66], isNew: false,
-    lat: 35.6605, lng: 139.7454, tag: "チームラボボーダレス", wiki: ["麻布台ヒルズ"],
+    lat: 35.6605, lng: 139.7454, tag: "チームラボボーダレス", wiki: ["麻布台ヒルズ"], ig: null,
     why: "海外観光客の「東京で行くべき場所」上位常連。没入アートの動画映えは衰え知らず。" },
   { name: "SHIBUYA SKY", area: "渋谷", cat: "フォトスポット",
     stage: "stable", history: [68,70,67,69,71], isNew: false,
-    lat: 35.6585, lng: 139.7013, tag: "shibuyasky", wiki: ["渋谷スクランブルスクエア"],
+    lat: 35.6585, lng: 139.7013, tag: "shibuyasky", wiki: ["渋谷スクランブルスクエア"], ig: null,
     why: "屋上からのスクランブル交差点俯瞰と夕景。サンセット時間帯のチケットは常に争奪戦。" },
   { name: "ボーナストラック(下北沢)", area: "下北沢", cat: "ショップ",
     stage: "stable", history: [35,37,34,36,35], isNew: false,
-    lat: 35.6597, lng: 139.6680, tag: "bonustrack", wiki: ["下北線路街", "下北沢駅"],
+    lat: 35.6597, lng: 139.6680, tag: "bonustrack", wiki: ["下北線路街", "下北沢駅"], ig: null,
     why: "個人店が集まる商店街型スポット。「日記屋 月日」など個性派店舗巡りがカルチャー層に安定人気。" },
   { name: "ダンデライオン・チョコレート(蔵前)", area: "蔵前", cat: "カフェ・スイーツ",
     stage: "stable", history: [30,32,31,33,32], isNew: false,
-    lat: 35.7052, lng: 139.7906, tag: "ダンデライオンチョコレート", wiki: ["蔵前"],
+    lat: 35.7052, lng: 139.7906, tag: "ダンデライオンチョコレート", wiki: ["蔵前"], ig: null,
     why: "「東京のブルックリン」蔵前散歩の定番。ファクトリー併設カフェのガトーショコラ投稿が根強い。" },
   { name: "スターバックス リザーブ ロースタリー東京", area: "中目黒", cat: "カフェ・スイーツ",
     stage: "stable", history: [40,42,45,43,44], isNew: false,
-    lat: 35.6494, lng: 139.6926, tag: "スターバックスリザーブロースタリー東京", wiki: ["目黒川"],
-    why: "目黒川沿いの世界最大級ロースタリー。季節限定ドリンクのたびにSNSが動く定点観測スポット。" }
+    lat: 35.6494, lng: 139.6926, tag: "スターバックスリザーブロースタリー東京", wiki: ["目黒川"], ig: null,
+    why: "目黒川沿いの世界最大級ロースタリー。季節限定ドリンクのたびにSNSが動く定点観測スポット。" },
+  { name: "Canal Cafe(飯田橋)", area: "飯田橋", cat: "カフェ・スイーツ",
+    stage: "stable", history: [38,40,42,45,46], isNew: false,
+    lat: 35.7013, lng: 139.7440, tag: "canalcafe", wiki: ["飯田橋駅"], ig: null,
+    why: "外濠の水上テラスで都心とは思えない開放感。夏になると毎年SNSが動く季節の定番。夕暮れどきのデッキ席が鉄板の画。" }
 ];
+
+// ============================================================
+// 都市(段階展開: 東京→大阪→福岡…)
+// ============================================================
+SPOTS.forEach(s => { s.city = "tokyo"; });
+const CITIES = {
+  tokyo:   { ja: "東京",  en: "Tokyo",   center: [35.6720, 139.7280], zoom: 12, active: true },
+  osaka:   { ja: "大阪",  en: "Osaka",   center: [34.6937, 135.5023], zoom: 12, active: false },
+  fukuoka: { ja: "福岡",  en: "Fukuoka", center: [33.5902, 130.4017], zoom: 12, active: false }
+};
+let activeCity = "tokyo";
+
+// ============================================================
+// 英語コンテンツ(週次更新時にCOOが同時生成)
+// ============================================================
+const EN_SPOTS = {
+  "BRUSSELS FRIES 新大久保": { area: "Shin-Okubo", why: "Authentic Brussels-style fries, double-fried in beef-fat blended oil. 'Sauce-mixing' videos went viral on TikTok, making this Shin-Okubo's new staple." },
+  "ポケパーク カントー(よみうりランド)": { area: "Inagi / Yomiuriland", why: "Pokemon's first permanent outdoor theme park, opened Feb 2026. 'Pokemon Forest' videos are going viral worldwide. Lottery-based tickets." },
+  "KAWAII MONSTER LAND": { area: "Harajuku / Takeshita St.", why: "Directed by Sebastian Masuda, opened Feb 2026. A psychedelic underground wonderland, hugely popular with international visitors. Timed tickets recommended." },
+  "TOKYO DREAM PARK": { area: "Ariake", why: "TV Asahi's entertainment complex opened March 2026, with immersive digital art and theaters. Expect lines on event days." },
+  "TAKANAWA GATEWAY CITY": { area: "Takanawa", why: "Grand-opened March 2026 — a 1.3km-long new district. Night-view posts of its tech-meets-tradition spaces are surging." },
+  "馬場FLAT 高田馬場": { area: "Takadanobaba", why: "In 2026 'fresh-baked aroma and sound' became the trend metric — posts about its bake-to-order style are accelerating. Forecast to rise further." },
+  "渋谷サクラステージ": { area: "Shibuya", why: "New shops keep opening in the Sakuragaoka district, and food accounts are discovering it. Go now to stay ahead." },
+  "Blau Espresso(綾瀬)": { area: "Ayase", why: "A glass-walled cafe under the railway arches, using the same beans as a famed Kiyosumi-Shirakawa roaster. TikTok posts are rising — the unexpected location helps." },
+  "Aux Merveilleux de Fred(神楽坂)": { area: "Kagurazaka", why: "Japan's only shop for the Belgian 'Merveilleux'. Posts are surging among tastemakers since this Paris favorite landed. Go before the lines form." },
+  "ドバイチョコ専門店エリア(新大久保)": { area: "Shin-Okubo", why: "The world-famous Dubai-chocolate craze has cooled to half its peak index. With the lines gone, now is the comfortable time to go." },
+  "2D Cafe 新大久保": { area: "Shin-Okubo", why: "Pioneer of the '2D world' cafe boom. The buzz has settled — fewer photo queues means relaxed shooting now." },
+  "三省堂書店 神保町本店(第2章)": { area: "Jimbocho", why: "Reopened March 2026 as 'Chapter 2'. The initial buzz on X has passed; its immersive shelves are best enjoyed in the current calm." },
+  "東急プラザ原宿「ハラカド」": { area: "Harajuku / Jingumae", why: "A Harajuku landmark with about 75 shops. Rooftop-terrace and basement-sento posts are now a steady staple." },
+  "Flapjack's Breakfast & Lunch": { area: "Higashi-Nihombashi", why: "A California roadside diner, faithfully recreated. A steady favorite for its giant buttery pancakes." },
+  "豊洲 千客万来": { area: "Toyosu", why: "Edo-style streets meet seafood. Inbound demand keeps 'overflowing seafood bowl' posts buzzing steadily." },
+  "ワーナー スタジオツアー東京(ハリー・ポッター)": { area: "Nerima (ex-Toshimaen)", why: "Reignited by the new season's production. Robe-clad visitor posts buzz consistently — a hall-of-famer." },
+  "チームラボボーダレス(麻布台ヒルズ)": { area: "Azabudai", why: "A fixture on international 'must-visit Tokyo' lists. Immersive art that never stops being video-genic." },
+  "SHIBUYA SKY": { area: "Shibuya", why: "Rooftop views over the Scramble Crossing and the sunset. Golden-hour tickets are always a battle." },
+  "ボーナストラック(下北沢)": { area: "Shimokitazawa", why: "A village of indie shops. A steady favorite among culture lovers for store-hopping." },
+  "ダンデライオン・チョコレート(蔵前)": { area: "Kuramae", why: "A staple of 'Tokyo's Brooklyn' strolls. Factory-cafe gateau chocolat posts endure." },
+  "スターバックス リザーブ ロースタリー東京": { area: "Nakameguro", why: "One of the world's largest roasteries, on the Meguro River. Social feeds move with every seasonal drink." },
+  "Canal Cafe(飯田橋)": { area: "Iidabashi", why: "A waterside terrace on the old moat, unreal for central Tokyo. A summer classic — sunset deck seats are the shot." }
+};
+
+// ============================================================
+// 多言語UI
+// ============================================================
+const I18N = {
+  ja: {
+    tagline: "SNSのバズを、天気予報のように。", updated: "最終更新", weekly: "週次更新",
+    tabMap: "バズマップ", tabRank: "今週の急上昇", forecast: "バズ予報", category: "カテゴリ",
+    all: "すべて", savedList: "保存リスト", save: "＋ 保存", savedBtn: "✓ 保存済み",
+    countSuffix: "SPOTS — バズ指数順", crowd: "混雑目安", gmap: "Google Mapで開く →",
+    rankTitle: "WEEKLY BUZZ RANKING", rankSub: "先週比のバズ指数「上がり幅」ランキング — 今まさに勢いのある場所",
+    rankCool: "クールダウン中 — 行列が消えた狙い目",
+    wk: "先週比", flatLabel: "→ 横ばい", index: "指数",
+    comingSoon: "COMING SOON",
+    footer: "β版 — バズ指数(0〜100)は編集部がSNSトレンド・メディア報道から算出する週次スコア。写真は店舗提供・Instagram公式投稿・Wikipediaの順で整備中。混雑目安はバズ指数からの編集部推定。",
+    stages: { rising: "今からバズる", peak: "絶賛バズり中", cooling: "終わりかけ", stable: "定番化" },
+    crowds: { peak: "行列覚悟", rising: "混み始め・今のうち", cooling: "行列解消中・狙い目", stable: "ふつう" },
+    cats: { "グルメ": "グルメ", "カフェ・スイーツ": "カフェ・スイーツ", "新施設": "新施設", "エンタメ": "エンタメ", "フォトスポット": "フォトスポット", "ショップ": "ショップ" }
+  },
+  en: {
+    tagline: "Tokyo's social buzz, forecast like the weather.", updated: "Updated", weekly: "Weekly",
+    tabMap: "Buzz Map", tabRank: "Weekly Risers", forecast: "FORECAST", category: "CATEGORY",
+    all: "All", savedList: "Saved", save: "＋ Save", savedBtn: "✓ Saved",
+    countSuffix: "SPOTS — by buzz index", crowd: "Crowd level", gmap: "Open in Google Maps →",
+    rankTitle: "WEEKLY BUZZ RANKING", rankSub: "Biggest week-over-week buzz gains — where the momentum is right now",
+    rankCool: "Cooling down — the lines are gone, go now",
+    wk: "vs last wk", flatLabel: "→ flat", index: "index",
+    comingSoon: "COMING SOON",
+    footer: "Beta — The buzz index (0-100) is a weekly editorial score based on social trends and media coverage. Photos: venue-provided, official Instagram, or Wikipedia. Crowd levels are editorial estimates from the buzz index.",
+    stages: { rising: "About to buzz", peak: "Buzzing now", cooling: "Cooling off", stable: "Classic" },
+    crowds: { peak: "Expect long lines", rising: "Getting busy — go now", cooling: "Lines fading — good timing", stable: "Normal" },
+    cats: { "グルメ": "Food", "カフェ・スイーツ": "Cafe & Sweets", "新施設": "New Openings", "エンタメ": "Entertainment", "フォトスポット": "Photo Spots", "ショップ": "Shops" }
+  }
+};
+let lang = "ja";
+try { lang = localStorage.getItem("tbm-lang") === "en" ? "en" : "ja"; } catch (e) {}
+const t = k => I18N[lang][k];
+const catLabel = c => I18N[lang].cats[c] || c;
+const spotArea = s => (lang === "en" && EN_SPOTS[s.name]) ? EN_SPOTS[s.name].area : s.area;
+const spotWhy = s => (lang === "en" && EN_SPOTS[s.name]) ? EN_SPOTS[s.name].why : s.why;
 
 // ============================================================
 // アプリ本体
 // ============================================================
-document.getElementById("updated-date").textContent = UPDATED;
 
 const CATS = ["すべて", "グルメ", "カフェ・スイーツ", "新施設", "エンタメ", "フォトスポット", "ショップ"];
 let activeCat = "すべて";
 let activeStage = "all";
+let savedOnly = false;
 let markers = {};
-const imgCache = {}; // spot.name -> url or "none"
+const imgCache = {};
 
+// 保存リスト(端末ローカル)
+let saved = new Set();
+try { saved = new Set(JSON.parse(localStorage.getItem("tbm-saved") || "[]")); } catch (e) {}
+function toggleSave(name) {
+  saved.has(name) ? saved.delete(name) : saved.add(name);
+  try { localStorage.setItem("tbm-saved", JSON.stringify([...saved])); } catch (e) {}
+  render();
+}
 
 // --- 地図 ---
 const map = L.map("map", { zoomControl: true }).setView([35.6720, 139.7280], 12);
@@ -403,7 +605,7 @@ L.tileLayer("https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r
   maxZoom: 19
 }).addTo(map);
 
-// --- 現在地ボタン (ズームボタンの直下) ---
+// --- 現在地ボタン ---
 const locCtl = L.control({ position: "topleft" });
 locCtl.onAdd = () => {
   const d = L.DomUtil.create("div", "leaflet-bar");
@@ -427,19 +629,21 @@ function locateMe() {
       .addTo(map).bindPopup("現在地");
     map.flyTo(ll, 14, { duration: .8 });
   }, () => {
-    alert("現在地を取得できませんでした。ブラウザの位置情報の許可設定を確認してください。\n(ローカルファイルでは動かないブラウザもあります。HTTPS公開後は安定します)");
+    alert("現在地を取得できませんでした。ブラウザの位置情報の許可設定を確認してください。");
   }, { enableHighAccuracy: true, timeout: 8000 });
 }
 
 // --- ヘルパー ---
+const escHtml = v => String(v).replace(/[&<>"']/g, c =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const score = s => s.history[s.history.length - 1];
 const delta = s => score(s) - s.history[s.history.length - 2];
 
 function deltaHtml(s) {
   const d = delta(s);
-  if (d > 3)  return `<span class="delta up">▲ 先週比 +${d}</span>`;
-  if (d < -3) return `<span class="delta down">▼ 先週比 ${d}</span>`;
-  return `<span class="delta flat">→ 横ばい</span>`;
+  if (d > 3)  return `<span class="delta up">▲ ${t("wk")} +${d}</span>`;
+  if (d < -3) return `<span class="delta down">▼ ${t("wk")} ${d}</span>`;
+  return `<span class="delta flat">${t("flatLabel")}</span>`;
 }
 
 function sparkline(s, w = 84, h = 26) {
@@ -454,35 +658,37 @@ function sparkline(s, w = 84, h = 26) {
   </svg>`;
 }
 
+// SNSブランドアイコン(インラインSVG)
+const SNS_ICONS = {
+  insta: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="5"/><circle cx="12" cy="12" r="4.2"/><circle cx="17.3" cy="6.7" r="1.3" fill="currentColor" stroke="none"/></svg>',
+  tiktok: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 3c.4 2.1 1.9 3.8 4 4.3v3.1c-1.5 0-2.9-.5-4-1.3v6.4c0 3.3-2.7 6-6 6s-6-2.7-6-6 2.7-6 6-6c.3 0 .7 0 1 .1v3.2c-.3-.1-.6-.2-1-.2-1.6 0-2.9 1.3-2.9 2.9s1.3 2.9 2.9 2.9 2.9-1.3 2.9-2.9V3h3.1z"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.9 2H22l-6.9 7.9L23 22h-6.4l-5-6.6L5.9 22H2.8l7.4-8.4L2 2h6.6l4.5 6L18.9 2zm-1.1 18h1.7L7.1 3.9H5.3L17.8 20z"/></svg>'
+};
+
 function snsLinks(s) {
   const t = encodeURIComponent(s.tag);
   return `
-    <a class="badge b-insta" target="_blank" rel="noopener noreferrer" href="https://www.instagram.com/explore/tags/${t}/">Instagram #</a>
-    <a class="badge b-tiktok" target="_blank" rel="noopener noreferrer" href="https://www.tiktok.com/tag/${t}">TikTok #</a>
-    <a class="badge b-x" target="_blank" rel="noopener noreferrer" href="https://x.com/search?q=%23${t}">X 検索</a>`;
+    <a class="sns-link" target="_blank" rel="noopener noreferrer" title="Instagramで #${escHtml(s.tag)} を見る" aria-label="Instagram" href="https://www.instagram.com/explore/tags/${t}/">${SNS_ICONS.insta}</a>
+    <a class="sns-link" target="_blank" rel="noopener noreferrer" title="TikTokで #${escHtml(s.tag)} を見る" aria-label="TikTok" href="https://www.tiktok.com/tag/${t}">${SNS_ICONS.tiktok}</a>
+    <a class="sns-link" target="_blank" rel="noopener noreferrer" title="Xで #${escHtml(s.tag)} を検索" aria-label="X" href="https://x.com/search?q=%23${t}">${SNS_ICONS.x}</a>`;
 }
 
 function stageBadge(s) {
   const st = STAGES[s.stage];
-  return `<span class="stage-badge sg-${st.cls}">${st.label}</span>`;
+  return `<span class="stage-badge sg-${st.cls}">${t("stages")[s.stage]}</span>`;
 }
 
-const escHtml = v => String(v).replace(/[&<>"']/g, c =>
-  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-
-function photoHtml(s, forPopup = false) {
+function photoHtml(s, ctx = "card") {
   const url = imgCache[s.name];
   if (url && url !== "none") {
-    const cls = forPopup ? "pop-img" : "photo";
-    const lazy = forPopup ? "" : ' loading="lazy"';
-    return `<img class="${cls}" src="${escHtml(url)}" alt="${escHtml(s.name)}" data-spot="${escHtml(s.name)}"${lazy}>`;
+    const cls = ctx === "popup" ? "pop-img" : "photo";
+    return `<img class="${cls}" src="${escHtml(url)}" alt="${escHtml(s.name)}" data-spot="${escHtml(s.name)}" loading="lazy">`;
   }
-  return forPopup
-    ? `<div class="pop-ph">NO PHOTO</div>`
-    : `<div class="photo-ph"><small>NO PHOTO</small></div>`;
+  if (ctx === "popup") return `<div class="pop-ph">NO PHOTO</div>`;
+  return `<div class="photo-ph">PHOTO COMING SOON</div>`;
 }
 
-// 画像読み込み失敗はイベント委任で拾い、プレースホルダーに差し替える
+// 画像読み込み失敗はイベント委任で拾う
 document.addEventListener("error", e => {
   const img = e.target;
   if (img && img.tagName === "IMG" && img.dataset.spot && imgCache[img.dataset.spot] !== "none") {
@@ -506,23 +712,30 @@ function makeIcon(spot) {
 
 function popupHtml(s) {
   const gmap = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(s.name + " " + s.area);
+  // 店舗公式Instagram投稿があれば埋め込み、なければ写真
+  const media = (s.ig && /^https:\/\/www\.instagram\.com\//.test(s.ig))
+    ? `<iframe class="ig-embed" src="${escHtml(s.ig.replace(/\/?$/, "/embed"))}" loading="lazy"></iframe>`
+    : photoHtml(s, "popup");
   return `<div class="pop">
-    ${photoHtml(s, true)}
+    ${media}
     <div class="inner">
-      <h3>${s.name}</h3>
-      <div class="area">${s.area} ｜ ${s.cat}</div>
+      <h3>${escHtml(s.name)}</h3>
+      <div class="area">${escHtml(spotArea(s))} ｜ ${escHtml(catLabel(s.cat))}</div>
       <div class="forecast">${stageBadge(s)}${sparkline(s, 70, 24)}<span class="score-num" style="font-size:18px;">${score(s)}</span></div>
-      <div class="why">${s.why}</div>
+      <div class="crowd">${t("crowd")}: <b>${t("crowds")[s.stage]}</b></div>
+      <div class="why">${escHtml(spotWhy(s))}</div>
       <div class="links">${snsLinks(s)}${s.isNew ? '<span class="badge b-new">2026 NEW</span>' : ""}</div>
-      <a class="gmap" href="${gmap}" target="_blank" rel="noopener noreferrer">Google Mapで開く →</a>
+      <a class="gmap" href="${gmap}" target="_blank" rel="noopener noreferrer">${t("gmap")}</a>
     </div>
   </div>`;
 }
 
 function visibleSpots() {
   return SPOTS.filter(s =>
+    s.city === activeCity &&
     (activeCat === "すべて" || s.cat === activeCat) &&
-    (activeStage === "all" || s.stage === activeStage)
+    (activeStage === "all" || s.stage === activeStage) &&
+    (!savedOnly || saved.has(s.name))
   );
 }
 
@@ -535,7 +748,6 @@ function focusSpot(s) {
 }
 
 function render() {
-  // --- マップ+カード ---
   Object.values(markers).forEach(m => map.removeLayer(m));
   markers = {};
   const spots = visibleSpots();
@@ -544,34 +756,38 @@ function render() {
     markers[s.name] = m;
   });
   const sorted = [...spots].sort((a, b) => score(b) - score(a));
-  document.getElementById("count").textContent = `${spots.length} SPOTS — バズ指数順`;
+  document.getElementById("count").textContent = `${spots.length} ${t("countSuffix")}`;
   document.getElementById("cards").innerHTML = sorted.map(s => `
-    <div class="card" data-name="${s.name}">
-      <div class="body">
+    <div class="card" data-name="${escHtml(s.name)}">
+      <div class="thumb">
         ${photoHtml(s)}
-        <div class="info">
-          <h3>${s.name}</h3>
-          <div class="meta">
-            <span class="cat-tag">${s.cat}</span>
-            <span>${s.area}</span>
-            ${s.isNew ? '<span class="badge b-new">2026 NEW</span>' : ""}
-          </div>
-          <div class="forecast">
-            ${stageBadge(s)}
-            ${sparkline(s)}
-            <div>
-              <div class="score-num">${score(s)}</div>
-              ${deltaHtml(s)}
-            </div>
+        ${stageBadge(s)}
+        <button class="save-btn ${saved.has(s.name) ? "on" : ""}" data-save="${escHtml(s.name)}">${saved.has(s.name) ? t("savedBtn") : t("save")}</button>
+      </div>
+      <div class="info">
+        <h3>${escHtml(s.name)}</h3>
+        <div class="meta">
+          <span class="cat-tag">${escHtml(catLabel(s.cat))}</span>
+          <span>${escHtml(spotArea(s))}</span>
+          ${s.isNew ? '<span class="badge b-new">2026 NEW</span>' : ""}
+        </div>
+        <div class="forecast">
+          ${sparkline(s)}
+          <div>
+            <div class="score-num">${score(s)}</div>
+            ${deltaHtml(s)}
           </div>
         </div>
+        <div class="crowd">${t("crowd")}: <b>${t("crowds")[s.stage]}</b></div>
+        <div class="why">${escHtml(spotWhy(s))}</div>
+        <div class="meta" style="margin-top:8px;">${snsLinks(s)}</div>
       </div>
-      <div class="why">${s.why}</div>
-      <div class="meta" style="margin-top:6px;">${snsLinks(s)}</div>
     </div>`).join("");
   document.querySelectorAll(".card").forEach(c => {
     c.addEventListener("click", e => {
       if (e.target.closest("a")) return;
+      const saveBtn = e.target.closest(".save-btn");
+      if (saveBtn) { toggleSave(saveBtn.dataset.save); return; }
       const s = SPOTS.find(x => x.name === c.dataset.name);
       document.querySelectorAll(".card").forEach(x => x.classList.remove("selected"));
       c.classList.add("selected");
@@ -586,17 +802,17 @@ function render() {
 function rankRow(s, i, up) {
   const d = delta(s);
   return `
-    <div class="rank-row" data-name="${s.name}">
+    <div class="rank-row" data-name="${escHtml(s.name)}">
       <div class="rank-no ${up && i < 3 ? "top" : ""}">${i + 1}</div>
-      ${photoHtml(s)}
+      ${photoHtml(s, "rank")}
       <div class="rank-info">
-        <h3>${s.name}</h3>
-        <div class="meta">${stageBadge(s)}<span>${s.area} ｜ ${s.cat}</span></div>
+        <h3>${escHtml(s.name)}</h3>
+        <div class="meta">${stageBadge(s)}<span>${escHtml(spotArea(s))} ｜ ${escHtml(catLabel(s.cat))}</span></div>
       </div>
       ${sparkline(s, 70, 24)}
       <div class="rank-delta">
         <div class="d ${d >= 0 ? "up" : "down"}">${d >= 0 ? "▲ +" + d : "▼ " + d}</div>
-        <div class="s">指数 ${score(s)}</div>
+        <div class="s">${t("index")} ${score(s)}</div>
       </div>
     </div>`;
 }
@@ -604,7 +820,7 @@ function rankRow(s, i, up) {
 function renderRank() {
   const byDelta = [...SPOTS].sort((a, b) => delta(b) - delta(a));
   const ups = byDelta.filter(s => delta(s) > 0);
-  const downs = byDelta.filter(s => delta(s) < 0).reverse(); // 下げ幅が大きい順
+  const downs = byDelta.filter(s => delta(s) < 0).reverse();
   document.getElementById("rank-up").innerHTML = ups.map((s, i) => rankRow(s, i, true)).join("");
   document.getElementById("rank-down").innerHTML = downs.map((s, i) => rankRow(s, i, false)).join("");
   document.querySelectorAll(".rank-row").forEach(r => {
@@ -627,41 +843,95 @@ function setView(v) {
 }
 document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => setView(t.dataset.view)));
 
-// --- フィルタ生成 ---
-const stageBox = document.getElementById("stage-filters");
-[["all", "すべて", ""], ...Object.entries(STAGES).map(([k, v]) => [k, v.label, `st-${v.cls}`])]
-  .forEach(([key, label, cls]) => {
+// --- フィルタ生成(言語切替時に再構築) ---
+function buildFilters() {
+  const stageBox = document.getElementById("stage-filters");
+  stageBox.innerHTML = `<span class="label" id="label-stage">${t("forecast")}</span>`;
+  [["all", t("all"), ""], ...Object.keys(STAGES).map(k => [k, t("stages")[k], `st-${STAGES[k].cls}`])]
+    .forEach(([key, label, cls]) => {
+      const b = document.createElement("button");
+      b.className = `chip ${cls}` + (key === activeStage || (key === "all" && activeStage === "all") ? " active" : "");
+      b.textContent = label;
+      b.addEventListener("click", () => {
+        activeStage = key;
+        stageBox.querySelectorAll(".chip").forEach(x => x.classList.remove("active"));
+        b.classList.add("active");
+        render();
+      });
+      stageBox.appendChild(b);
+    });
+
+  const catBox = document.getElementById("cat-filters");
+  catBox.innerHTML = `<span class="label" id="label-cat">${t("category")}</span>`;
+  CATS.forEach(cat => {
     const b = document.createElement("button");
-    b.className = `chip ${cls}` + (key === "all" ? " active" : "");
-    b.textContent = label;
+    const isAll = cat === "すべて";
+    b.className = "chip" + ((isAll && activeCat === "すべて") || cat === activeCat ? " active" : "");
+    b.textContent = isAll ? t("all") : catLabel(cat);
     b.addEventListener("click", () => {
-      activeStage = key;
-      stageBox.querySelectorAll(".chip").forEach(x => x.classList.remove("active"));
+      activeCat = cat;
+      catBox.querySelectorAll(".chip:not(.saved-chip)").forEach(x => x.classList.remove("active"));
       b.classList.add("active");
       render();
     });
-    stageBox.appendChild(b);
+    catBox.appendChild(b);
   });
-
-const catBox = document.getElementById("cat-filters");
-CATS.forEach(cat => {
-  const b = document.createElement("button");
-  b.className = "chip" + (cat === "すべて" ? " active" : "");
-  b.textContent = cat;
-  b.addEventListener("click", () => {
-    activeCat = cat;
-    catBox.querySelectorAll(".chip").forEach(x => x.classList.remove("active"));
-    b.classList.add("active");
+  const savedBtn = document.createElement("button");
+  savedBtn.className = "chip saved-chip" + (savedOnly ? " active" : "");
+  savedBtn.textContent = t("savedList");
+  savedBtn.addEventListener("click", () => {
+    savedOnly = !savedOnly;
+    savedBtn.classList.toggle("active", savedOnly);
     render();
   });
-  catBox.appendChild(b);
+  catBox.appendChild(savedBtn);
+}
+
+// --- 都市セレクタ ---
+function buildCitySelect() {
+  const sel = document.getElementById("city-select");
+  sel.innerHTML = "";
+  Object.entries(CITIES).forEach(([key, c]) => {
+    const o = document.createElement("option");
+    o.value = key;
+    o.textContent = c.active ? c[lang] : `${c[lang]} — ${t("comingSoon")}`;
+    o.disabled = !c.active;
+    if (key === activeCity) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+document.getElementById("city-select").addEventListener("change", e => {
+  const key = e.target.value;
+  if (!CITIES[key] || !CITIES[key].active) return;
+  activeCity = key;
+  map.setView(CITIES[key].center, CITIES[key].zoom);
+  render();
+});
+
+// --- 言語切替 ---
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.getElementById("tagline").textContent = t("tagline");
+  document.getElementById("updated-box").innerHTML = `${t("updated")}: <b>${UPDATED}</b>`;
+  document.getElementById("lang-btn").textContent = lang === "ja" ? "EN" : "日本語";
+  document.querySelector('.tab[data-view="map"]').textContent = t("tabMap");
+  document.querySelector('.tab[data-view="rank"]').textContent = t("tabRank");
+  document.getElementById("rank-title").textContent = t("rankTitle");
+  document.getElementById("rank-sub").textContent = t("rankSub");
+  document.getElementById("rank-cool-label").textContent = t("rankCool");
+  document.getElementById("footer-note").textContent = t("footer");
+  buildCitySelect();
+  buildFilters();
+  render();
+}
+document.getElementById("lang-btn").addEventListener("click", () => {
+  lang = lang === "ja" ? "en" : "ja";
+  try { localStorage.setItem("tbm-lang", lang); } catch (e) {}
+  applyLang();
 });
 
 // ============================================================
-// Wikipedia画像の自動取得
-//  - MediaWiki Action API (origin=* でCORS公式対応) に1回のバッチ問い合わせ
-//  - redirects=1 で記事名のゆらぎを吸収、候補タイトルを先頭から順に採用
-//  - サイズはAPI側で生成(pithumbsize)するためURL書き換えによる404が起きない
+// Wikipedia画像の自動取得(店舗提供・IG埋め込みが無いスポットのフォールバック)
 // ============================================================
 async function loadImages() {
   const wanted = [];
@@ -674,13 +944,12 @@ async function loadImages() {
     if (!res.ok) throw new Error("API " + res.status);
     const j = await res.json();
     const q = j.query || {};
-    // 記事名の正規化・リダイレクトを解決するマップ
     const resolve = {};
     (q.normalized || []).forEach(n => resolve[n.from] = n.to);
     (q.redirects || []).forEach(r => resolve[r.from] = r.to);
     const finalTitle = t => { let x = t, i = 0; while (resolve[x] && i++ < 4) x = resolve[x]; return x; };
     const thumbs = {};
-    const OK_IMG = /^https:\/\/upload\.wikimedia\.org\//; // 画像URLはWikimedia公式ドメインのみ許可
+    const OK_IMG = /^https:\/\/upload\.wikimedia\.org\//;
     (q.pages || []).forEach(p => {
       if (p.thumbnail && p.thumbnail.source && OK_IMG.test(p.thumbnail.source)) thumbs[p.title] = p.thumbnail.source;
     });
@@ -698,7 +967,7 @@ async function loadImages() {
   render();
 }
 
-render();
+applyLang();
 loadImages();
 </script>
 <!-- Cloudflare Web Analytics -->
